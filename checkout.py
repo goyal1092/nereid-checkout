@@ -14,7 +14,8 @@ from nereid import render_template, request, url_for, flash, redirect, \
     login_required, current_app
 from nereid.signals import login, logout, failed_login
 from nereid.globals import session
-from wtforms import Form, TextField, RadioField, validators, PasswordField, \
+from flask_wtf import Form
+from wtforms import TextField, RadioField, validators, PasswordField, \
     ValidationError, SelectField, BooleanField
 from werkzeug.wrappers import BaseResponse
 from trytond.model import ModelView, fields
