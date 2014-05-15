@@ -280,6 +280,7 @@ class Checkout(ModelView):
                     ('company', '=', request.nereid_website.company.id),
                 ])
                 if existing:
+                    flash(_("Email already exists. Login to continue"))
                     return render_template(
                         'checkout/signin-email-in-use.jinja',
                         email=form.email.data
@@ -326,6 +327,7 @@ class Checkout(ModelView):
                         url_for('nereid.checkout.shipping_address')
                     )
                 else:
+                    flash(_("Invalid login credential"))
                     failed_login.send()
 
         if not current_user.is_anonymous() and login_fresh():
