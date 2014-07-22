@@ -222,6 +222,24 @@ class CheckoutSignInForm(Form):
         if self.checkout_mode.data == 'account' and not field.data:
             raise ValidationError(_('Password is required.'))
 
+    def validate_email(self, field):
+        """
+        Validate email for guest.
+
+        If email is tied to an existing account throw error
+        """
+        NereidUser = Pool().get('nereid.user')
+
+        if self.checkout_mode.data == 'guest':
+            existing = NereidUser.search([
+                    ('email', '=', field.data),
+            ])
+            if existing:
+                raise ValidationError(_(
+                    '''It looks like you already have an account tied with
+                    the email you entered. Please login with your account.'''
+                ))
+
 
 class Checkout(ModelView):
     'A checkout model'

@@ -174,6 +174,10 @@ class TestCheckoutSignIn(BaseTestCheckout):
         """When the user is guest and uses a registered email in the guest
         checkout, the default behavior is to show a help page in the
         template checkout/signin-email-in-use.jinja.
+
+        But for now it will show the error message that email is linked to
+        existing account and guest user cannot continue checkout with this
+        email.
         """
         with Transaction().start(DB_NAME, USER, CONTEXT):
             self.setup_defaults()
@@ -194,8 +198,8 @@ class TestCheckoutSignIn(BaseTestCheckout):
                     }
                 )
                 self.assertEqual(rv.status_code, 200)
-                self.assertEqual(
-                    rv.data, '%s in use' % self.registered_user.email
+                self.assertTrue(
+                    "email" in rv.data
                 )
 
     def test_0040_registered_user_signin_wrong(self):
