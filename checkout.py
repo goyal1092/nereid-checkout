@@ -205,6 +205,32 @@ class PaymentForm(Form):
         choices=[], coerce=int
     )
 
+    def validate_payment_profile(form, field):
+        """
+        Validate payment profile to pick billing address
+        """
+
+        PaymentProfile = Pool().get('party.payment_profile')
+
+        if not field.data:
+            return
+
+        if current_user.is_authenticated():
+            try:
+                profile, = PaymentProfile.search([
+                    ('id', '=', field.data),
+                    ('party', '=', current_user.party.id),
+                ])
+
+            except ValueError:
+                raise ValidationError(_(
+                    "The selected payment profile is invalid!"
+                ))
+        else:
+            raise ValidationError(_(
+                "This feature is for logged in user. Please login to continue!"
+            ))
+
 
 class CheckoutSignInForm(Form):
     "Checkout Sign-In Form"
@@ -499,6 +525,7 @@ class Checkout(ModelView):
         '''
         NereidCart = Pool().get('nereid.cart')
         Address = Pool().get('party.address')
+        PaymentProfile = Pool().get('party.payment_profile')
 
         cart = NereidCart.open_cart()
         address_form = cls.get_new_address_form(cart.sale.invoice_address)
@@ -516,6 +543,16 @@ class Checkout(ModelView):
                 return redirect(
                     url_for('nereid.checkout.payment_method')
                 )
+            if request.form.get('payment_profile'):
+                payment_profile = PaymentProfile(
+                    request.form.get('payment_profile', type=int)
+                )
+                if payment_profile:
+                    cart.sale.invoice_address = payment_profile.address
+                    cart.sale.save()
+                    return redirect(
+                        url_for('nereid.checkout.payment_method')
+                    )
 
             if not request.is_guest_user and request.form.get('address'):
                 # Registered user has chosen an existing address
