@@ -7,11 +7,12 @@
     :copyright: (c) 2010-2014 by Openlabs Technologies & Consulting (P) LTD.
     :license: GPLv3, see LICENSE for more details
 """
+import warnings
 from datetime import datetime
 from functools import wraps
 
 from nereid import render_template, request, url_for, flash, redirect, \
-    current_app, current_user, route
+    current_app, current_user, route, abort, login_required
 from nereid.signals import failed_login
 from nereid.globals import session
 from flask.ext.login import login_user
@@ -22,6 +23,7 @@ from werkzeug.wrappers import BaseResponse
 from trytond.model import ModelView, fields
 from trytond.pool import Pool, PoolMeta
 from trytond.transaction import Transaction
+from jinja2 import TemplateNotFound
 from trytond.pyson import Eval
 
 from .i18n import _
@@ -768,3 +770,101 @@ class Address:
             ('party', '=', Eval('party'))
         ], depends=['party'], select=True
     )
+
+    @classmethod
+    @route("/create-address", methods=["GET", "POST"])
+    @login_required
+    def create_address(cls):
+        """
+        Create an address for the current nereid_user
+
+        This method is extension of nereid method for creating
+        address. Change in this method is adding phone_number contact mech
+        to address via address form field phone.
+
+        If form data is coming from phone field add phone_number else do not
+        pass phone number
+        """
+        form = cls.get_address_form()
+
+        if request.method == 'POST' and form.validate():
+            party = request.nereid_user.party
+            address, = cls.create([{
+                'name': form.name.data,
+                'street': form.street.data,
+                'streetbis': form.streetbis.data,
+                'zip': form.zip.data,
+                'city': form.city.data,
+                'country': form.country.data,
+                'subdivision': form.subdivision.data,
+                'party': party.id,
+            }])
+            if form.email.data:
+                party.add_contact_mechanism_if_not_exists(
+                    'email', form.email.data
+                )
+            if form.phone.data:
+                cls.write([address], {
+                    'phone_number':
+                    current_user.party.add_contact_mechanism_if_not_exists(
+                        'phone', form.phone.data
+                    ).id,
+                })
+            return redirect(url_for('party.address.view_address'))
+
+        try:
+            return render_template('address-add.jinja', form=form)
+        except TemplateNotFound:
+            # The address-add template was introduced in 3.0.3.0
+            # so just raise a deprecation warning till 3.2.X and then
+            # expect the use of address-add template
+            warnings.warn(
+                "address-add.jinja template not found. "
+                "Will be required in future versions",
+                DeprecationWarning
+            )
+            return render_template('address-edit.jinja', form=form)
+
+    @classmethod
+    @route("/save-new-address", methods=["GET", "POST"])
+    @route("/edit-address/<int:address>", methods=["GET", "POST"])
+    @login_required
+    def edit_address(cls, address=None):
+        """
+        Edit an Address
+
+        POST will update an existing address.
+        GET will return a existing address edit form.
+
+        This method is extension of nereid patry address method.
+
+        In this method we are mapping phone number to address
+        and redirecting to desired url passed by template request.
+        """
+
+        rv = super(Address, cls).edit_address(address)
+
+        form = cls.get_address_form()
+
+        if address not in (a.id for a in current_user.party.addresses):
+            # Check if the address is in the list of addresses of the
+            # current user's party
+            abort(403)
+
+        address = cls(address)
+
+        if request.method == "POST" and form.validate() and address:
+
+            if form.phone.data:
+                cls.write([address], {
+                    'phone_number':
+                    current_user.party.add_contact_mechanism_if_not_exists(
+                        'phone', form.phone.data
+                    ).id,
+                })
+                if not current_user.is_anonymous() and request.args.get('next'):
+                    return redirect(request.args['next'])
+
+            return redirect(url_for('party.address.view_address'))
+
+        return rv

@@ -49,6 +49,8 @@ class BaseTestCheckout(BaseTestCase):
             'emails/sale-confirmation-text.jinja': ' ',
             'emails/sale-confirmation-html.jinja': ' ',
             'checkout.jinja': '{{form.errors|safe}}',
+            'address-edit.jinja': '{{ form.errors|safe }} ',
+            'address-add.jinja': ' ',
         })
 
         # Patch SMTP Lib
@@ -715,6 +717,91 @@ class TestCheckoutShippingAddress(BaseTestCheckout):
                     ('shipment_address', '=', None)]
                 )
                 self.assertEqual(len(sales), 1)
+
+    def test_0070_regd_user_add_and_edit_address(self):
+        """
+        Registered user will add address from account page
+        and edit from the shipping address page.
+        """
+        with Transaction().start(DB_NAME, USER, CONTEXT):
+            self.setup_defaults()
+            app = self.get_app()
+
+            NereidUser = POOL.get('nereid.user')
+            Address = POOL.get('party.address')
+
+            country = self.Country(self.available_countries[0])
+            subdivision = country.subdivisions[0]
+
+            user, = NereidUser.search([
+                ('email', '=', 'email@example.com')
+            ])
+
+            with app.test_client() as c:
+
+                # Sign-in
+                c.post(
+                    '/login', data={
+                        'email': 'email@example.com',
+                        'password': 'password',
+                    }
+                )
+                c.post(
+                    '/create-address', data={
+                        'name': 'Sharoon Thomas',
+                        'street': 'Biscayne Boulevard',
+                        'streetbis': 'Apt. 1906, Biscayne Park',
+                        'zip': 'FL33137',
+                        'city': 'Miami',
+                        'country': country.id,
+                        'subdivision': subdivision.id,
+                    }
+                )
+                address, = Address.search([
+                    ('party', '=', user.party.id),
+                    ('name', '=', 'Sharoon Thomas'),
+                ])
+
+                self.assertTrue(address)
+
+                c.post(
+                    '/cart/add', data={
+                        'product': self.product1.id, 'quantity': 5
+                    }
+                )
+
+                rv = c.post('/edit-address/22')
+
+                self.assertEqual(rv.status_code, 403)
+
+                rv = c.get(
+                    '/edit-address/%d' % (
+                        address.id,
+                        ) + '?next=%2Fcheckout%2Fshipping-address'
+                )
+                self.assertEqual(rv.status_code, 200)
+
+                rv = c.post(
+                    '/edit-address/%d' % (
+                        address.id,
+                        ) + '?next=%2Fcheckout%2Fshipping-address', data={
+                            'name': 'Sharoon Thomas',
+                            'street': 'Biscayne Boulevard',
+                            'streetbis': 'Apt. 1906, Biscayne Park',
+                            'zip': 'FL33137',
+                            'city': 'Miami',
+                            'country': country.id,
+                            'subdivision': subdivision.id,
+                            'phone': '12345678'
+                        }
+                )
+                self.assertTrue(
+                    rv.location.endswith('/checkout/shipping-address')
+                )
+
+                self.assertEqual(address.phone_number.value, '12345678')
+
+                self.assertEqual(rv.status_code, 302)
 
 
 class TestCheckoutDeliveryMethod(BaseTestCheckout):
